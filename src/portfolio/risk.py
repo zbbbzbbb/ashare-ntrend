@@ -59,6 +59,10 @@ class RiskManager:
                idx: int) -> dict:
         """Update position and check for exit signals.
         
+        Args:
+            idx: Row index into the BBI DataFrame for the current date.
+                 Must be the correct integer position (not -1).
+        
         Returns:
             dict with keys: action ('hold', 'stop_loss', 'profit_take', 'trend_exit'),
                            shares_to_sell, reason
@@ -76,7 +80,11 @@ class RiskManager:
         # 1. Check stop-loss
         if pos["entry_above_bbi"]:
             # Case B: two consecutive closes below BBI
-            two_day_below = current_bbi_df["two_day_below_bbi"].iloc[idx] if idx < len(current_bbi_df) else False
+            if idx >= 0 and idx < len(current_bbi_df):
+                two_day_below = bool(current_bbi_df["two_day_below_bbi"].iloc[idx])
+            else:
+                two_day_below = False
+            
             if two_day_below:
                 return {
                     "action": "stop_loss",

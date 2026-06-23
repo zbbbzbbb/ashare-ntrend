@@ -55,17 +55,17 @@ class ExecutionEngine:
         date_str: str,
         current_prices: dict,  # {ts_code: close_price}
         bbi_data: dict,  # {ts_code: BBI DataFrame}
-        bbi_idx: int,
+        bbi_idx_map: dict,  # {ts_code: int} — correct row index per stock
         can_enter: bool,
         buy_candidates: list,  # [(ts_code, score)]
     ) -> dict:
         """Process end-of-day for all positions and generate orders.
         
         Args:
-            date_str: Current trade date
+            date_str: Current trade date (YYYYMMDD)
             current_prices: Latest close prices
             bbi_data: BBI signal DataFrames per stock
-            bbi_idx: Index into BBI data
+            bbi_idx_map: Correct row index into each BBI DataFrame for this date
             can_enter: Whether market timing allows new entries
             buy_candidates: Ranked list of (ts_code, score) for potential buys
         
@@ -91,6 +91,7 @@ class ExecutionEngine:
             if bbi_df is None:
                 continue
             
+            bbi_idx = bbi_idx_map.get(ts_code, -1)
             result = self.risk_manager.update(
                 ts_code, current_prices[ts_code], bbi_df, bbi_idx
             )
@@ -130,8 +131,9 @@ class ExecutionEngine:
                 )
                 
                 if shares > 0:
+                    buy_bbi_idx = bbi_idx_map.get(ts_code, -1)
                     self._execute_buy(ts_code, price, shares, date_str, score,
-                                     bbi_data.get(ts_code), bbi_idx)
+                                     bbi_data.get(ts_code), buy_bbi_idx)
                     actions["buys"].append((ts_code, shares, score))
                     self.weekly_buy_count += 1
         
@@ -162,10 +164,10 @@ class ExecutionEngine:
         
         self.cash -= total_cost
         
-        # Determine BBI status
+        # Determine BBI status at entry date
         above_bbi = False
-        bbi_value = 0
-        if bbi_df is not None and bbi_idx < len(bbi_df):
+        bbi_value = 0.0
+        if bbi_df is not None and bbi_idx >= 0 and bbi_idx < len(bbi_df):
             above_bbi = bool(bbi_df["above_bbi"].iloc[bbi_idx])
             bbi_value = float(bbi_df["bbi"].iloc[bbi_idx])
         

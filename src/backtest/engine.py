@@ -252,17 +252,37 @@ class BacktestEngine:
                     if len(date_rows) > 0:
                         current_prices[ts_code] = float(date_rows["close_adj"].iloc[-1])
             
-            # ── Build BBI data ──
+            # ── Build BBI data + correct row indices ──
             bbi_data = {}
+            bbi_idx_map = {}
             for ts_code in self.execution.positions.keys():
                 if ts_code in stock_cache and ts_code not in bbi_cache:
                     df = stock_cache[ts_code]
                     bbi_cache[ts_code] = compute_bbi_signal(df["close_adj"])
-                bbi_data[ts_code] = bbi_cache.get(ts_code)
+                if ts_code in bbi_cache and ts_code in stock_cache:
+                    bbi_data[ts_code] = bbi_cache[ts_code]
+                    # Find the row index in stock_cache for this date
+                    stock_df = stock_cache[ts_code]
+                    matches = stock_df[stock_df["trade_date"] == date_str]
+                    if len(matches) > 0:
+                        bbi_idx_map[ts_code] = int(matches.index[0])
+            
+            # Also compute for buy candidates (needed for _execute_buy BBI check)
+            for ts_code, _ in buy_candidates:
+                if ts_code not in bbi_idx_map and ts_code in stock_cache:
+                    if ts_code not in bbi_cache:
+                        df = stock_cache[ts_code]
+                        bbi_cache[ts_code] = compute_bbi_signal(df["close_adj"])
+                    # Put BBI data where _execute_buy can find it
+                    bbi_data[ts_code] = bbi_cache[ts_code]
+                    matches = stock_cache[ts_code]
+                    matches = matches[matches["trade_date"] == date_str]
+                    if len(matches) > 0:
+                        bbi_idx_map[ts_code] = int(matches.index[0])
             
             # ── Process daily ──
             self.execution.process_daily(
-                date_str, current_prices, bbi_data, -1,
+                date_str, current_prices, bbi_data, bbi_idx_map,
                 can_enter, buy_candidates
             )
         
